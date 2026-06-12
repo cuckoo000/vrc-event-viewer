@@ -77,10 +77,11 @@
     });
   }
 
+  // 選択ジャンルのすべてを含むイベントのみ表示（AND。検索と同じ「足すと狭まる」挙動）
   function matchesGenres(ev) {
     if (state.genres.length === 0) return true;
     var genres = parseGenres(ev);
-    return state.genres.some(function (g) { return genres.indexOf(g) !== -1; });
+    return state.genres.every(function (g) { return genres.indexOf(g) !== -1; });
   }
 
   function toggleGenre(genre) {
@@ -326,27 +327,44 @@
   }
 
   // 取得済みイベントからジャンル一覧を集計し、ピッカーのチップ列を再構築する
-  // （該当イベント数の降順、同数は名前順。選択状態はカード内チップと共有）
+  // 並び順は無条件の該当数降順で固定（選択中にチップが並び替わらないように）。
+  // 表示する件数は「そのチップを追加選択した場合のヒット数」（検索条件・既存選択込み）で、
+  // 0件になるチップは無効化してAND絞り込みの行き止まりを防ぐ
   function renderGenrePicker(events) {
-    var counts = {};
+    var totalCounts = {};
     events.forEach(function (ev) {
       parseGenres(ev).forEach(function (genre) {
-        counts[genre] = (counts[genre] || 0) + 1;
+        totalCounts[genre] = (totalCounts[genre] || 0) + 1;
       });
     });
-    var genres = Object.keys(counts).sort(function (a, b) {
-      return counts[b] - counts[a] || a.localeCompare(b, 'ja');
+    var genres = Object.keys(totalCounts).sort(function (a, b) {
+      return totalCounts[b] - totalCounts[a] || a.localeCompare(b, 'ja');
+    });
+
+    var normalizedQuery = normalizeText(state.query.trim());
+    var base = events.filter(function (ev) {
+      return !normalizedQuery || matchesQuery(ev, normalizedQuery);
     });
 
     ui.genrePicker.style.display = genres.length === 0 ? 'none' : '';
     ui.genrePickerChips.textContent = '';
     genres.forEach(function (genre) {
       var selected = state.genres.indexOf(genre) !== -1;
+      var union = selected ? state.genres : state.genres.concat([genre]);
+      var count = base.filter(function (ev) {
+        var evGenres = parseGenres(ev);
+        return union.every(function (g) { return evGenres.indexOf(g) !== -1; });
+      }).length;
+
       var chip = el('button', 'vev-chip' + (selected ? ' is-selected' : ''),
-        genre + ' (' + counts[genre] + ')');
+        genre + ' (' + count + ')');
       chip.type = 'button';
       chip.setAttribute('aria-pressed', selected ? 'true' : 'false');
-      chip.addEventListener('click', function () { toggleGenre(genre); });
+      if (count === 0 && !selected) {
+        chip.disabled = true; // 選択しても0件になる組み合わせは選ばせない
+      } else {
+        chip.addEventListener('click', function () { toggleGenre(genre); });
+      }
       ui.genrePickerChips.appendChild(chip);
     });
   }

@@ -187,6 +187,16 @@
   font-weight: 700;
 }
 
+.vev-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vev-chip:disabled:hover {
+  border-color: var(--vev-border);
+  color: var(--vev-text-sub);
+}
+
 /* 日付セクション */
 .vev-day {
   margin-bottom: 16px;
