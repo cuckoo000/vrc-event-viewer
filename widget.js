@@ -174,6 +174,15 @@
     });
     container.appendChild(search);
 
+    // ジャンルピッカー（折りたたみ）。チップ列は render() で差し替えるが、
+    // details 要素自体は使い回すため開閉状態が維持される
+    var genrePicker = el('details', 'vev-genre-picker');
+    genrePicker.style.display = 'none';
+    genrePicker.appendChild(el('summary', null, 'ジャンルで絞り込む'));
+    var genrePickerChips = el('div', 'vev-chips vev-picker-chips');
+    genrePicker.appendChild(genrePickerChips);
+    container.appendChild(genrePicker);
+
     var filterbar = el('div', 'vev-filterbar');
     filterbar.style.display = 'none';
     container.appendChild(filterbar);
@@ -190,6 +199,8 @@
       nav: nav,
       navLabel: navLabel,
       search: search,
+      genrePicker: genrePicker,
+      genrePickerChips: genrePickerChips,
       filterbar: filterbar,
       body: body,
       footer: footer
@@ -263,6 +274,7 @@
       return (!normalizedQuery || matchesQuery(ev, normalizedQuery)) && matchesGenres(ev);
     });
 
+    renderGenrePicker(events);
     renderFilterBar(filtered.length);
 
     ui.body.textContent = '';
@@ -311,6 +323,32 @@
       link.rel = 'noopener';
       ui.footer.appendChild(link);
     }
+  }
+
+  // 取得済みイベントからジャンル一覧を集計し、ピッカーのチップ列を再構築する
+  // （該当イベント数の降順、同数は名前順。選択状態はカード内チップと共有）
+  function renderGenrePicker(events) {
+    var counts = {};
+    events.forEach(function (ev) {
+      parseGenres(ev).forEach(function (genre) {
+        counts[genre] = (counts[genre] || 0) + 1;
+      });
+    });
+    var genres = Object.keys(counts).sort(function (a, b) {
+      return counts[b] - counts[a] || a.localeCompare(b, 'ja');
+    });
+
+    ui.genrePicker.style.display = genres.length === 0 ? 'none' : '';
+    ui.genrePickerChips.textContent = '';
+    genres.forEach(function (genre) {
+      var selected = state.genres.indexOf(genre) !== -1;
+      var chip = el('button', 'vev-chip' + (selected ? ' is-selected' : ''),
+        genre + ' (' + counts[genre] + ')');
+      chip.type = 'button';
+      chip.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      chip.addEventListener('click', function () { toggleGenre(genre); });
+      ui.genrePickerChips.appendChild(chip);
+    });
   }
 
   // 絞り込み状態の表示（選択ジャンル・件数・一括解除）。条件がないときは非表示

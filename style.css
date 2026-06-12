@@ -97,6 +97,27 @@
   box-shadow: 0 0 0 2px rgba(59, 110, 165, 0.2);
 }
 
+/* ジャンルピッカー（折りたたみ） */
+.vev-genre-picker {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--vev-border);
+  border-radius: 8px;
+  background: var(--vev-card-bg);
+  font-size: 13px;
+}
+
+.vev-genre-picker summary {
+  color: var(--vev-accent);
+  cursor: pointer;
+  user-select: none;
+}
+
+.vev-picker-chips {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
 /* フィルタバー（絞り込み状態の表示） */
 .vev-filterbar {
   display: flex;
