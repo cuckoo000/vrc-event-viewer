@@ -76,6 +76,96 @@
   font-size: 15px;
 }
 
+/* 検索ボックス */
+.vev-search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--vev-border);
+  border-radius: 8px;
+  background: var(--vev-card-bg);
+  color: var(--vev-text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.vev-search:focus {
+  outline: none;
+  border-color: var(--vev-accent);
+  box-shadow: 0 0 0 2px rgba(59, 110, 165, 0.2);
+}
+
+/* フィルタバー（絞り込み状態の表示） */
+.vev-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--vev-bg);
+  font-size: 12px;
+}
+
+.vev-filterbar-label {
+  color: var(--vev-text-sub);
+}
+
+.vev-hit-count {
+  font-weight: 700;
+  color: var(--vev-text-sub);
+}
+
+.vev-clear-filters {
+  margin-left: auto;
+  padding: 3px 12px;
+  border: 1px solid var(--vev-border);
+  border-radius: 999px;
+  background: var(--vev-card-bg);
+  color: var(--vev-text-sub);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vev-clear-filters:hover {
+  border-color: var(--vev-accent);
+  color: var(--vev-accent);
+}
+
+/* ジャンルチップ */
+.vev-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.vev-chip {
+  padding: 1px 10px;
+  border: 1px solid var(--vev-border);
+  border-radius: 999px;
+  background: var(--vev-bg);
+  color: var(--vev-text-sub);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.vev-chip:hover {
+  border-color: var(--vev-accent);
+  color: var(--vev-accent);
+}
+
+.vev-chip.is-selected {
+  background: var(--vev-accent);
+  border-color: var(--vev-accent);
+  color: #fff;
+  font-weight: 700;
+}
+
 /* 日付セクション */
 .vev-day {
   margin-bottom: 16px;

@@ -11,14 +11,21 @@
     { key: 'method', label: '参加方法' },
     { key: 'remarks', label: '備考' }
   ];
+  // テキスト検索の対象フィールド（description は構造化に失敗した場合の原文）
+  var SEARCH_FIELDS = ['title', 'details', 'organizer', 'description'];
+  var SEARCH_DEBOUNCE_MS = 150;
 
   var config = window.VRC_EVENT_VIEWER_CONFIG || {};
   var container = document.getElementById('vrc-event-viewer');
   if (!container) return;
 
   var state = {
-    mode: 'today',      // 'today' | 'week'
-    date: jstToday()    // 「今日」タブで表示中の日付（YYYY-MM-DD）
+    mode: 'today',       // 'today' | 'week'
+    date: jstToday(),    // 「今日」タブで表示中の日付（YYYY-MM-DD）
+    query: '',           // 検索キーワード（生文字列）
+    genres: [],          // 選択中ジャンル（OR条件）
+    lastData: null,      // 直近のAPIレスポンス
+    lastRangeStart: null // 直近の表示範囲開始日
   };
 
   // ---------- 日付ユーティリティ（JST固定） ----------
@@ -48,6 +55,49 @@
 
   function dateOf(iso) {
     return iso.slice(0, 10);
+  }
+
+  // ---------- 絞り込みユーティリティ ----------
+
+  // 全角英数字・半角カナ等の揺れを吸収して比較する
+  function normalizeText(value) {
+    var s = String(value);
+    if (s.normalize) s = s.normalize('NFKC');
+    return s.toLowerCase();
+  }
+
+  function parseGenres(ev) {
+    if (!ev.genre) return [];
+    return ev.genre.split(',').map(function (g) { return g.trim(); }).filter(Boolean);
+  }
+
+  function matchesQuery(ev, normalizedQuery) {
+    return SEARCH_FIELDS.some(function (field) {
+      return ev[field] && normalizeText(ev[field]).indexOf(normalizedQuery) !== -1;
+    });
+  }
+
+  function matchesGenres(ev) {
+    if (state.genres.length === 0) return true;
+    var genres = parseGenres(ev);
+    return state.genres.some(function (g) { return genres.indexOf(g) !== -1; });
+  }
+
+  function toggleGenre(genre) {
+    var i = state.genres.indexOf(genre);
+    if (i === -1) {
+      state.genres.push(genre);
+    } else {
+      state.genres.splice(i, 1);
+    }
+    render();
+  }
+
+  function clearFilters() {
+    state.query = '';
+    state.genres = [];
+    ui.search.value = '';
+    render();
   }
 
   // ---------- DOMヘルパー ----------
@@ -108,6 +158,26 @@
 
     container.appendChild(toolbar);
 
+    var search = el('input', 'vev-search');
+    search.type = 'search';
+    search.placeholder = '検索（タイトル・内容・主催者）';
+    search.setAttribute('aria-label', 'イベントを検索');
+    search.setAttribute('enterkeyhint', 'search');
+    var debounceTimer = null;
+    search.addEventListener('input', function () {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        debounceTimer = null;
+        state.query = search.value;
+        render();
+      }, SEARCH_DEBOUNCE_MS);
+    });
+    container.appendChild(search);
+
+    var filterbar = el('div', 'vev-filterbar');
+    filterbar.style.display = 'none';
+    container.appendChild(filterbar);
+
     var body = el('div', 'vev-body');
     container.appendChild(body);
 
@@ -119,6 +189,8 @@
       tabWeek: tabWeek,
       nav: nav,
       navLabel: navLabel,
+      search: search,
+      filterbar: filterbar,
       body: body,
       footer: footer
     };
@@ -126,6 +198,7 @@
 
   var ui = build();
 
+  // タブ・日送り時のみ呼ぶ。fetchして結果を保持し、描画は render() に委ねる
   function update() {
     ui.tabToday.classList.toggle('is-active', state.mode === 'today');
     ui.tabWeek.classList.toggle('is-active', state.mode === 'week');
@@ -151,7 +224,9 @@
       })
       .then(function (data) {
         if (update.lastRequest !== requestKey) return; // 古いレスポンスは破棄
-        renderEvents(data, start);
+        state.lastData = data;
+        state.lastRangeStart = start;
+        render();
       })
       .catch(function () {
         if (update.lastRequest !== requestKey) return;
@@ -175,19 +250,33 @@
     ui.body.appendChild(box);
   }
 
-  function renderEvents(data, rangeStart) {
-    ui.body.textContent = '';
+  // 保持中のレスポンスに検索・ジャンル条件を適用して描画する（fetchしない）
+  function render() {
+    if (!state.lastData) return; // 取得前（読み込み中・エラー表示中）は何もしない
 
+    var data = state.lastData;
+    var rangeStart = state.lastRangeStart;
     var events = (data && data.events) || [];
+
+    var normalizedQuery = normalizeText(state.query.trim());
+    var filtered = events.filter(function (ev) {
+      return (!normalizedQuery || matchesQuery(ev, normalizedQuery)) && matchesGenres(ev);
+    });
+
+    renderFilterBar(filtered.length);
+
+    ui.body.textContent = '';
     if (events.length === 0) {
       showMessage(state.mode === 'today'
         ? dateLabel(rangeStart) + ' のイベントはありません。'
         : '今週のイベントはありません。');
+    } else if (filtered.length === 0) {
+      showMessage('条件に一致するイベントはありません。');
     } else {
       // 開始日でグルーピング（範囲開始日より前に始まった継続中イベントは範囲開始日に表示）
       var groups = {};
       var order = [];
-      events.forEach(function (ev) {
+      filtered.forEach(function (ev) {
         var day = dateOf(ev.start);
         if (day < rangeStart) day = rangeStart;
         if (!groups[day]) {
@@ -224,6 +313,31 @@
     }
   }
 
+  // 絞り込み状態の表示（選択ジャンル・件数・一括解除）。条件がないときは非表示
+  function renderFilterBar(hitCount) {
+    ui.filterbar.textContent = '';
+    var active = state.query.trim() !== '' || state.genres.length > 0;
+    ui.filterbar.style.display = active ? '' : 'none';
+    if (!active) return;
+
+    ui.filterbar.appendChild(el('span', 'vev-filterbar-label', '絞り込み中:'));
+
+    state.genres.forEach(function (genre) {
+      var chip = el('button', 'vev-chip is-selected', genre + ' ✕');
+      chip.type = 'button';
+      chip.setAttribute('aria-label', genre + ' の絞り込みを解除');
+      chip.addEventListener('click', function () { toggleGenre(genre); });
+      ui.filterbar.appendChild(chip);
+    });
+
+    ui.filterbar.appendChild(el('span', 'vev-hit-count', hitCount + '件'));
+
+    var clear = el('button', 'vev-clear-filters', 'すべて解除');
+    clear.type = 'button';
+    clear.addEventListener('click', clearFilters);
+    ui.filterbar.appendChild(clear);
+  }
+
   function renderCard(ev, groupDay) {
     var card = el('article', 'vev-card');
 
@@ -238,11 +352,22 @@
 
     card.appendChild(el('h3', 'vev-title', ev.title || '(タイトルなし)'));
 
-    var metaParts = [];
-    if (ev.organizer) metaParts.push('主催: ' + ev.organizer);
-    if (ev.genre) metaParts.push('ジャンル: ' + ev.genre);
-    if (metaParts.length > 0) {
-      card.appendChild(el('p', 'vev-meta', metaParts.join(' ／ ')));
+    if (ev.organizer) {
+      card.appendChild(el('p', 'vev-meta', '主催: ' + ev.organizer));
+    }
+
+    var genres = parseGenres(ev);
+    if (genres.length > 0) {
+      var chips = el('div', 'vev-chips');
+      genres.forEach(function (genre) {
+        var selected = state.genres.indexOf(genre) !== -1;
+        var chip = el('button', 'vev-chip' + (selected ? ' is-selected' : ''), genre);
+        chip.type = 'button';
+        chip.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        chip.addEventListener('click', function () { toggleGenre(genre); });
+        chips.appendChild(chip);
+      });
+      card.appendChild(chips);
     }
 
     var detailRows = DETAIL_FIELDS.filter(function (f) { return ev[f.key]; });
