@@ -1,5 +1,17 @@
 /* イベントビューア ウィジェット（モバイルファースト） */
 
+/* 冒頭の説明文（index.html。ウィジェット外だが見た目を .vev に合わせる） */
+.vev-intro {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 12px 0;
+  color: #57606a;
+  font-size: 13px;
+  line-height: 1.7;
+  font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "BIZ UDPGothic",
+    Meiryo, system-ui, sans-serif;
+}
+
 .vev {
   --vev-accent: #3b6ea5;
   --vev-bg: #f6f7f9;
