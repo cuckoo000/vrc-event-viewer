@@ -23,7 +23,8 @@
     mode: 'today',       // 'today' | 'week'
     date: jstToday(),    // 「今日」タブで表示中の日付（YYYY-MM-DD）
     query: '',           // 検索キーワード（生文字列）
-    genres: [],          // 選択中ジャンル（OR条件）
+    genres: [],          // 選択中ジャンル（AND条件）
+    selectedOrganizer: '', // 選択中主催者（単一選択）
     lastData: null,      // 直近のAPIレスポンス
     lastRangeStart: null // 直近の表示範囲開始日
   };
@@ -84,6 +85,10 @@
     return state.genres.every(function (g) { return genres.indexOf(g) !== -1; });
   }
 
+  function matchesOrganizer(ev) {
+    return !state.selectedOrganizer || ev.organizer === state.selectedOrganizer;
+  }
+
   function toggleGenre(genre) {
     var i = state.genres.indexOf(genre);
     if (i === -1) {
@@ -94,11 +99,22 @@
     render();
   }
 
+  function toggleOrganizer(organizer) {
+    state.selectedOrganizer = state.selectedOrganizer === organizer ? '' : organizer;
+    render();
+  }
+
   function clearFilters() {
     state.query = '';
     state.genres = [];
+    state.selectedOrganizer = '';
     ui.search.value = '';
     render();
+  }
+
+  function showOrganizerInWeek() {
+    state.mode = 'week';
+    update();
   }
 
   // ---------- DOMヘルパー ----------
@@ -272,7 +288,9 @@
 
     var normalizedQuery = normalizeText(state.query.trim());
     var filtered = events.filter(function (ev) {
-      return (!normalizedQuery || matchesQuery(ev, normalizedQuery)) && matchesGenres(ev);
+      return (!normalizedQuery || matchesQuery(ev, normalizedQuery))
+        && matchesGenres(ev)
+        && matchesOrganizer(ev);
     });
 
     renderGenrePicker(events);
@@ -343,7 +361,7 @@
 
     var normalizedQuery = normalizeText(state.query.trim());
     var base = events.filter(function (ev) {
-      return !normalizedQuery || matchesQuery(ev, normalizedQuery);
+      return (!normalizedQuery || matchesQuery(ev, normalizedQuery)) && matchesOrganizer(ev);
     });
 
     ui.genrePicker.style.display = genres.length === 0 ? 'none' : '';
@@ -372,7 +390,7 @@
   // 絞り込み状態の表示（選択ジャンル・件数・一括解除）。条件がないときは非表示
   function renderFilterBar(hitCount) {
     ui.filterbar.textContent = '';
-    var active = state.query.trim() !== '' || state.genres.length > 0;
+    var active = state.query.trim() !== '' || state.genres.length > 0 || state.selectedOrganizer !== '';
     ui.filterbar.style.display = active ? '' : 'none';
     if (!active) return;
 
@@ -386,7 +404,22 @@
       ui.filterbar.appendChild(chip);
     });
 
+    if (state.selectedOrganizer) {
+      var organizerChip = el('button', 'vev-chip is-selected', '主催: ' + state.selectedOrganizer + ' ✕');
+      organizerChip.type = 'button';
+      organizerChip.setAttribute('aria-label', state.selectedOrganizer + ' の主催者絞り込みを解除');
+      organizerChip.addEventListener('click', function () { toggleOrganizer(state.selectedOrganizer); });
+      ui.filterbar.appendChild(organizerChip);
+    }
+
     ui.filterbar.appendChild(el('span', 'vev-hit-count', hitCount + '件'));
+
+    if (state.selectedOrganizer && state.mode === 'today') {
+      var showWeek = el('button', 'vev-expand-range', '今週で見る');
+      showWeek.type = 'button';
+      showWeek.addEventListener('click', showOrganizerInWeek);
+      ui.filterbar.appendChild(showWeek);
+    }
 
     var clear = el('button', 'vev-clear-filters', 'すべて解除');
     clear.type = 'button';
@@ -409,7 +442,15 @@
     card.appendChild(el('h3', 'vev-title', ev.title || '(タイトルなし)'));
 
     if (ev.organizer) {
-      card.appendChild(el('p', 'vev-meta', '主催: ' + ev.organizer));
+      var organizerMeta = el('p', 'vev-meta vev-organizer-meta');
+      organizerMeta.appendChild(el('span', null, '主催: '));
+      var organizerSelected = state.selectedOrganizer === ev.organizer;
+      var organizerButton = el('button', 'vev-organizer-button' + (organizerSelected ? ' is-selected' : ''), ev.organizer);
+      organizerButton.type = 'button';
+      organizerButton.setAttribute('aria-pressed', organizerSelected ? 'true' : 'false');
+      organizerButton.addEventListener('click', function () { toggleOrganizer(ev.organizer); });
+      organizerMeta.appendChild(organizerButton);
+      card.appendChild(organizerMeta);
     }
 
     var genres = parseGenres(ev);

@@ -168,6 +168,24 @@
   color: var(--vev-accent);
 }
 
+.vev-expand-range {
+  padding: 3px 12px;
+  border: 1px solid var(--vev-accent);
+  border-radius: 999px;
+  background: var(--vev-card-bg);
+  color: var(--vev-accent);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vev-expand-range:hover,
+.vev-expand-range:focus-visible {
+  background: var(--vev-accent);
+  color: #fff;
+}
+
 /* ジャンルチップ */
 .vev-chips {
   display: flex;
@@ -273,6 +291,42 @@
   font-size: 13px;
   color: var(--vev-text-sub);
   overflow-wrap: anywhere;
+}
+
+.vev-organizer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+}
+
+.vev-organizer-button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vev-accent);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.vev-organizer-button:hover,
+.vev-organizer-button:focus-visible {
+  text-decoration: underline;
+}
+
+.vev-organizer-button:focus-visible {
+  outline: 2px solid rgba(59, 110, 165, 0.4);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.vev-organizer-button.is-selected {
+  color: var(--vev-text);
+  text-decoration: underline;
 }
 
 /* 詳細（開閉） */
