@@ -1,5 +1,5 @@
 // イベントビューア ウィジェット
-// <div id="vrc-event-viewer"></div> に今日／今週のイベント一覧を描画する。
+// <div id="vrc-event-viewer"></div> に今日／今週／1ヶ月のイベント一覧を描画する。
 // イベント由来のテキストはすべて textContent 経由で挿入する（XSS対策）。
 (function () {
   'use strict';
@@ -14,20 +14,25 @@
   // テキスト検索の対象フィールド（description は構造化に失敗した場合の原文）
   var SEARCH_FIELDS = ['title', 'details', 'organizer', 'description'];
   var SEARCH_DEBOUNCE_MS = 150;
+  // タブ切替・日送りで同じ範囲を再フェッチしないためのクライアントキャッシュ有効期間
+  var CLIENT_CACHE_MS = 5 * 60 * 1000;
 
   var config = window.VRC_EVENT_VIEWER_CONFIG || {};
   var container = document.getElementById('vrc-event-viewer');
   if (!container) return;
 
   var state = {
-    mode: 'today',       // 'today' | 'week'
+    mode: 'today',       // 'today' | 'week' | 'month'
     date: jstToday(),    // 「今日」タブで表示中の日付（YYYY-MM-DD）
+    month: jstToday().slice(0, 7), // 「1ヶ月」タブで表示中の月（YYYY-MM）。過去の月も指定可
     query: '',           // 検索キーワード（生文字列）
     genres: [],          // 選択中ジャンル（AND条件）
     selectedOrganizer: '', // 選択中主催者（単一選択）
     lastData: null,      // 直近のAPIレスポンス
     lastRangeStart: null // 直近の表示範囲開始日
   };
+
+  var responseCache = {}; // requestKey -> { data, fetchedAt }
 
   // ---------- 日付ユーティリティ（JST固定） ----------
 
@@ -46,6 +51,22 @@
     var p = dateStr.split('-').map(Number);
     var weekday = WEEKDAYS[new Date(p[0], p[1] - 1, p[2]).getDay()];
     return p[1] + '/' + p[2] + '(' + weekday + ')';
+  }
+
+  function addMonths(monthStr, n) {
+    var p = monthStr.split('-').map(Number);
+    var d = new Date(Date.UTC(p[0], p[1] - 1 + n, 1));
+    return d.toISOString().slice(0, 7);
+  }
+
+  function monthLabel(monthStr) {
+    var p = monthStr.split('-').map(Number);
+    return p[0] + '年' + p[1] + '月';
+  }
+
+  function daysInMonth(monthStr) {
+    var p = monthStr.split('-').map(Number);
+    return new Date(p[0], p[1], 0).getDate();
   }
 
   // APIはJSTのISO文字列（例 2026-06-12T22:00:00+09:00）を返すため、
@@ -137,8 +158,10 @@
     var tabs = el('div', 'vev-tabs');
     var tabToday = el('button', 'vev-tab', '今日');
     var tabWeek = el('button', 'vev-tab', '今週');
+    var tabMonth = el('button', 'vev-tab', '1ヶ月');
     tabToday.type = 'button';
     tabWeek.type = 'button';
+    tabMonth.type = 'button';
     tabToday.addEventListener('click', function () {
       state.mode = 'today';
       state.date = jstToday();
@@ -148,8 +171,14 @@
       state.mode = 'week';
       update();
     });
+    tabMonth.addEventListener('click', function () {
+      state.mode = 'month';
+      state.month = jstToday().slice(0, 7);
+      update();
+    });
     tabs.appendChild(tabToday);
     tabs.appendChild(tabWeek);
+    tabs.appendChild(tabMonth);
     toolbar.appendChild(tabs);
 
     var nav = el('div', 'vev-nav');
@@ -161,11 +190,19 @@
     prev.setAttribute('aria-label', '前の日');
     next.setAttribute('aria-label', '次の日');
     prev.addEventListener('click', function () {
-      state.date = addDays(state.date, -1);
+      if (state.mode === 'month') {
+        state.month = addMonths(state.month, -1);
+      } else {
+        state.date = addDays(state.date, -1);
+      }
       update();
     });
     next.addEventListener('click', function () {
-      state.date = addDays(state.date, 1);
+      if (state.mode === 'month') {
+        state.month = addMonths(state.month, 1);
+      } else {
+        state.date = addDays(state.date, 1);
+      }
       update();
     });
     nav.appendChild(prev);
@@ -213,7 +250,10 @@
     return {
       tabToday: tabToday,
       tabWeek: tabWeek,
+      tabMonth: tabMonth,
       nav: nav,
+      navPrev: prev,
+      navNext: next,
       navLabel: navLabel,
       search: search,
       genrePicker: genrePicker,
@@ -230,20 +270,43 @@
   function update() {
     ui.tabToday.classList.toggle('is-active', state.mode === 'today');
     ui.tabWeek.classList.toggle('is-active', state.mode === 'week');
-    ui.nav.style.display = state.mode === 'today' ? '' : 'none';
-    ui.navLabel.textContent = dateLabel(state.date);
+    ui.tabMonth.classList.toggle('is-active', state.mode === 'month');
+    ui.nav.style.display = state.mode === 'week' ? 'none' : '';
+    ui.navLabel.textContent = state.mode === 'month' ? monthLabel(state.month) : dateLabel(state.date);
+    ui.navPrev.setAttribute('aria-label', state.mode === 'month' ? '前の月' : '前の日');
+    ui.navNext.setAttribute('aria-label', state.mode === 'month' ? '次の月' : '次の日');
 
     if (!config.apiUrl) {
       showMessage('設定エラー: config.js の apiUrl が未設定です。');
       return;
     }
 
-    var start = state.mode === 'today' ? state.date : jstToday();
-    var days = state.mode === 'today' ? 1 : 7;
+    var start;
+    var days;
+    if (state.mode === 'month') {
+      start = state.month + '-01';
+      days = daysInMonth(state.month);
+    } else if (state.mode === 'today') {
+      start = state.date;
+      days = 1;
+    } else {
+      start = jstToday();
+      days = 7;
+    }
     var requestKey = state.mode + ':' + start;
     update.lastRequest = requestKey;
 
-    showMessage('読み込み中…');
+    var cached = responseCache[requestKey];
+    if (cached && Date.now() - cached.fetchedAt < CLIENT_CACHE_MS) {
+      state.lastData = cached.data;
+      state.lastRangeStart = start;
+      render();
+      return;
+    }
+
+    showMessage(state.mode === 'month'
+      ? '読み込み中…（1ヶ月分の表示には時間がかかる場合があります）'
+      : '読み込み中…');
 
     fetch(config.apiUrl + '?start=' + encodeURIComponent(start) + '&days=' + days)
       .then(function (res) {
@@ -251,6 +314,7 @@
         return res.json();
       })
       .then(function (data) {
+        responseCache[requestKey] = { data: data, fetchedAt: Date.now() };
         if (update.lastRequest !== requestKey) return; // 古いレスポンスは破棄
         state.lastData = data;
         state.lastRangeStart = start;
@@ -298,9 +362,15 @@
 
     ui.body.textContent = '';
     if (events.length === 0) {
-      showMessage(state.mode === 'today'
-        ? dateLabel(rangeStart) + ' のイベントはありません。'
-        : '今週のイベントはありません。');
+      var emptyMessage;
+      if (state.mode === 'today') {
+        emptyMessage = dateLabel(rangeStart) + ' のイベントはありません。';
+      } else if (state.mode === 'month') {
+        emptyMessage = monthLabel(state.month) + ' のイベントはありません。';
+      } else {
+        emptyMessage = '今週のイベントはありません。';
+      }
+      showMessage(emptyMessage);
     } else if (filtered.length === 0) {
       showMessage('条件に一致するイベントはありません。');
     } else {
